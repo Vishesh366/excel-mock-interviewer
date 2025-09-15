@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Excel Mock Interviewer</title>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        /* Reset and body styling */
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Roboto', sans-serif;
+            background: linear-gradient(135deg, #74ebd5, #ACB6E5);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 30px;
+            color: #333;
+        }
+
+        h1 {
+            font-weight: 700;
+            font-size: 2.5rem;
+            margin-bottom: 20px;
+            color: #fff;
+            text-shadow: 1px 1px 5px rgba(0,0,0,0.2);
+        }
+
+        button {
+            padding: 15px 35px;
+            font-size: 18px;
+            background: #ff6b6b;
+            color: white;
+            border: none;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin: 15px 0;
+            box-shadow: 0 6px 15px rgba(0,0,0,0.2);
+        }
+
+        button:hover {
+            background: #ff4757;
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(0,0,0,0.3);
+        }
+
+        #question-box {
+            margin-top: 30px;
+            font-size: 1.4rem;
+            font-weight: 500;
+            background: rgba(255,255,255,0.9);
+            padding: 20px;
+            border-radius: 15px;
+            width: 80%;
+            max-width: 700px;
+            box-shadow: 0 6px 15px rgba(0,0,0,0.15);
+            min-height: 80px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+        }
+
+        .result {
+            margin-top: 25px;
+            width: 80%;
+            max-width: 700px;
+            background: rgba(255,255,255,0.95);
+            padding: 20px;
+            border-radius: 15px;
+            box-shadow: 0 6px 15px rgba(0,0,0,0.15);
+            text-align: left;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .result h2 {
+            margin-bottom: 15px;
+            color: #ff6b6b;
+        }
+
+        .result p {
+            margin-bottom: 15px;
+            line-height: 1.5;
+        }
+
+        .progress {
+            margin-top: 15px;
+            width: 80%;
+            max-width: 700px;
+            background: rgba(255,255,255,0.3);
+            border-radius: 12px;
+            overflow: hidden;
+            height: 20px;
+        }
+
+        .progress-bar {
+            height: 100%;
+            width: 0;
+            background: #ff6b6b;
+            border-radius: 12px;
+            transition: width 0.4s ease;
+        }
+    </style>
+</head>
+<body>
+    <h1>Excel Mock Interview</h1>
+    <button id="startBtn">Start Interview</button>
+
+    <div id="question-box"></div>
+
+    <div class="progress">
+        <div class="progress-bar" id="progress-bar"></div>
+    </div>
+
+    <div id="evaluation-box" class="result"></div>
+
+<script>
+let currentQuestion = "";
+let recognition;
+let questionCount = 0;
+
+document.getElementById("startBtn").addEventListener("click", startInterview);
+
+function speak(text, callback=null) {
+    const utter = new SpeechSynthesisUtterance(text);
+    utter.rate = 0.9;
+    utter.onend = function() { if(callback) callback(); }
+    window.speechSynthesis.speak(utter);
+}
+
+function startInterview() {
+    fetch("/start_interview", { method:"POST" })
+    .then(res => res.json())
+    .then(data => {
+        document.getElementById("startBtn").style.display="none";
+        document.getElementById("evaluation-box").innerHTML = "";
+        questionCount = 0;
+        document.getElementById("progress-bar").style.width = "0%";
+        speak(data.intro, getNextQuestion);
+    });
+}
+
+function getNextQuestion() {
+    fetch("/get_question")
+    .then(res => res.json())
+    .then(data => {
+        if(data.done){
+            document.getElementById("question-box").innerText="🎉 Interview Finished!";
+            let resultsHtml = "<h2>Final Results</h2>";
+            data.results.forEach((item,i)=>{
+                resultsHtml += `<p><b>Q${i+1}: ${item.question}</b><br>
+                                <b>Your Answer:</b> ${item.answer}<br>
+                                <b>Evaluation:</b> ${item.evaluation}</p>`;
+            });
+            document.getElementById("evaluation-box").innerHTML = resultsHtml;
+        } else {
+            currentQuestion = data.question;
+            questionCount += 1;
+            document.getElementById("question-box").innerText = currentQuestion;
+            document.getElementById("progress-bar").style.width = `${(questionCount / 10) * 100}%`;
+            speak(currentQuestion, startListening);
+        }
+    });
+}
+
+function startListening() {
+    recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+    recognition.lang = 'en-US';
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+
+    recognition.start();
+
+    recognition.onresult = function(event) {
+        let userAnswer = event.results[0][0].transcript;
+        submitAnswer(userAnswer);
+    }
+
+    recognition.onerror = function(event) {
+        speak("Sorry, I did not catch that. Please repeat.", startListening);
+    }
+}
+
+function submitAnswer(answer) {
+    fetch("/submit_answer", {
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({answer:answer})
+    })
+    .then(res=>res.json())
+    .then(data=>{
+        let evalBox = document.getElementById("evaluation-box");
+        if(!data.repeat){
+            evalBox.innerHTML += `<p><b>Q${questionCount}: ${currentQuestion}</b><br>
+                                  <b>Your Answer:</b> ${answer}<br>
+                                  <b>Evaluation:</b> ${data.evaluation}</p>`;
+            getNextQuestion();
+        } else {
+            speak(currentQuestion, startListening);
+        }
+    });
+}
+</script>
+</body>
+</html>
