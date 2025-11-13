@@ -5,7 +5,7 @@ import google.generativeai as genai
 import os
 
 # Initialize the GenAI client
-genai.configure(api_key="AIzaSyDEQqNQ0yP2ykenZblVhbPXQImENYqTm_E")
+genai.configure(api_key="Your key")
 
 app = Flask(__name__)
 RESULTS_FILE = "interview_results.json"
